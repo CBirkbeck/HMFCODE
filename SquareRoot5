@@ -1,0 +1,1836 @@
+
+
+/*This is the code used to compute the Up matrices. DONT try to compute the char polys in magma, since if your matrix is bigger than 50x50 you'll probably die before it finishes. Better to use the sage file for this. The relevant code here is right at the end given by some functions Compute..Up() which will return a funtion Up() which when you input a weight in the classical case, or a weight and a integer n in the OC case, will give you matrices for U2 and T11 on the relevant spaces of HMFs. In the classical case the size of the matrix is the dim of the space of HMFs, in the OC case the size if 16*n. All the other code is probably useless to you. Also I'm sorry but my code is not pretty or optimized (this is sometimes due to Magma). Lastly, if anything breaks its magmas fault, if any works its my fault. */
+
+SetMemoryLimit(1*10^11);
+
+P<x> := PolynomialRing(Integers());
+ F:=NumberField(x^2-5);
+
+Foo:= InfinitePlaces(F);
+Z:=RingOfIntegers(F);
+A1:= QuaternionAlgebra(ideal<Z | 1>, Foo[1..2]);
+AO:=MaximalOrder(A1);
+N,b:=NormOneGroup(AO);
+N2:=[b(n):n in N];
+
+NN2:=Units(AO);
+
+
+OOrder:=function(O,N,P)
+ 
+	Z_F := BaseRing(O);
+	 
+	bns:=[];
+	  for pp in Factorization(N) do
+	    PO := PseudoBasis(O);
+	    M2Fp, phi, m := pMatrixRing(O, pp[1]:Precision:=P);
+	    S := [MatrixUnit(M2Fp, i, j)@@phi : i,j in [1..2]]
+	         cat [PO[i][2] : i in [1..4]];
+	    I := [ideal<Z_F | 1>, ideal<Z_F | 1>, pp[1]^pp[2], ideal<Z_F | 1>]
+	         cat [pp[1]^pp[2]*PO[i][1] : i in [1..4]];
+	    O := Order(S, I);
+		bns:=bns cat [phi];
+	  end for;
+
+	  O`IsEichler := [* true, O!1 *];
+	  return O, bns;
+	end function;
+
+
+I:=function(F,n) 
+	Z:=RingOfIntegers(F);
+	return ideal<Z|n>;
+	end function;
+
+pq:=function(F,n)
+	Z_F:=RingOfIntegers(F);
+	if IsPrime(n) then
+	return Decomposition(Z_F,n)[1][1];
+	else return ideal<Z_F|n>;
+	end if;
+	end function;
+
+
+N1:=function(F,p)
+	/*The Image of the norm one elements under Residuematrixring*/
+	x,y:=ResidueMatrixRing(AO,p);
+	return [y(n): n in N2];
+	end function;
+
+
+orbit:=function(PP1,OS2)
+	return [x : x in PP1 | x in OS2];
+	end function;
+
+
+ok:=function(i,N)
+	return [x*i : x in N];
+	end function;
+
+OR:=function(N,Q,T,li)
+	ans:=[]; 
+	bns:=[];
+	i:=0; 
+	while i ne #Q do
+	i:=i+1;
+	 if Q[i] in ans then
+	 ans:=ans cat [];
+	else
+	 ans:=ans cat [x : x in ok(Q[i],N) | x in Q];
+	 bns:=bns cat [[y: y in [x : x in ok(Q[i],N) | x in Q] | Valuation(T(y)[2][1]) gt 0][li]];
+	end if;
+	end while; 
+	return SequenceToSet(bns);
+	end function;
+
+
+
+OR2:=function(N,Q)
+	ans:=[]; 
+	bns:=[];
+	i:=0; 
+	while i ne #Q do
+	i:=i+1;
+	 if Q[i] in ans then
+	 ans:=ans cat [];
+	else
+	 ans:=ans cat [x : x in ok(Q[i],N) | x in Q];
+	 bns:=bns cat [ [x : x in ok(Q[i],N) | x in Q][1]];
+	end if;
+	end while; 
+	return SequenceToSet(bns);
+	end function;
+
+
+ProjOrbits:=function(F,p)
+	/*This gives the projective orbits as first output and the stabilizers as the second.*/ 
+	Z:=RingOfIntegers(F);
+	N:=N1(F,p);
+	PS1,f1:=ProjectiveLine(quo<Z|p>: Type:="Matrix");
+		  f2:=function(x)
+		  a,b,c:=f1(x,false,false);
+		  return b;
+	end function;
+
+	ook:=function(i,N)
+		return [f2(x*i) : x in N];
+		end function;
+
+	ans:=[];
+	bns:=[];
+	i:=0;
+	while SequenceToSet(ans) ne PS1 do
+	i:=i+1;
+	ans:=ans cat orbit(PS1,ook(PS1[i],N));
+	bns:=bns cat [orbit(PS1,ook(PS1[i],N))];
+	end while;
+	C:= SetToSequence(SequenceToSet([bns[i][1] : i in [1..#bns]]));
+
+
+	dn:=[];
+	for i in C do
+		   g:=[u : u in N | f2(u*i) eq i];
+		   dn:=dn cat g;
+	end for;
+
+	return C,dn;
+
+	end function;
+
+
+Norm_p_elements:=function(F,Q,n,T,li)
+	r:=Trace(F!n);
+	E:=Enumerate(Q,r,r);
+	En:=[x : x in E | Norm(x) eq n];
+	return OR(N2,En,T,li);
+	end function;
+
+
+Norm_p_elements2:=function(F,QQ,n)
+	r:=Trace(F!n);
+	E:=Enumerate(QQ,r,r);
+	En:=[x : x in E | Norm(x) eq n];
+	return OR2(N2,En);
+	end function;
+
+
+Por1:=function(F,p)
+		/*This is the same as ProjOrb, but insted of givin stabilisers it gives the map that comes with ProjectiveLine*/
+		Z:=RingOfIntegers(F);
+		N:=N1(F,p);
+		PS1,f11:=ProjectiveLine(quo<Z|p>:Type:="Matrix");
+		  f2:=function(x)
+		  a,b,c:=f11(x,false,false);
+		  return b;
+		  end function;
+		ook:=function(i,N)
+		return [f2(x*i) : x in N];
+		end function;
+
+		ans:=[];
+		bns:=[];
+		i:=0;
+		while SequenceToSet(ans) ne PS1 do
+		i:=i+1;
+		ans:=ans cat orbit(PS1,ook(PS1[i],N));
+		bns:=bns cat [orbit(PS1,ook(PS1[i],N))];
+		end while;
+		return SetToSequence(SequenceToSet([bns[i][1] : i in [1..#bns]])),f11;
+		end function;
+
+
+		Porlift:=function(F,c,cc)
+
+		P:=Por1(F,c);
+		primes:=Factorization(cc);
+
+		In:=function(x);
+		if x eq 0 then
+		 return x;
+		 else 
+		 return 1/x;
+		end if;
+		end function;
+
+
+		ans:=[* *];
+
+		for p in primes do
+
+		if IsSplit(p[1]) then
+
+		q,j:=quo<Z|p[1]^p[2]>;
+		red:=[[q!pp[1][1],q!pp[2][1]]: pp in P];
+		redi:=[[In(q!pp[1][1]),In(q!pp[2][1])]: pp in P];	
+		redu:=[[Eltseq(D[1])[1],Eltseq(D[2])[1]]: D in red];
+		redui:=[[Eltseq(D[1])[1],Eltseq(D[2])[1]]: D in redi];
+		bns:=[];	
+			for i in [1..#redu] do
+			if redu[i][1] ne 0 then
+			bns:=bns cat [[redu[i][1],0,redu[i][2],redui[i][1]]];
+			else 
+			bns:=bns cat [[redu[i][1],redui[i][2],redu[i][2],0]];
+			end if;
+			end for;
+		Ma:=[* Matrix(pAdicField(Completion(F,p[1]:Precision:=300)),2,2,bb) : bb in bns *];
+		ans:=ans cat [* Ma *];
+
+		elif IsInert(p[1]) then 
+		q,j:=quo<Z|p[1]^p[2]>;
+		red:=[[q!pp[1][1],q!pp[2][1]]: pp in P];
+		redi:=[[In(q!pp[1][1]),In(q!pp[2][1])]: pp in P];	
+		C,kr:=Completion(F,p[1]:Precision:=300);
+		redu:=[[C! kr(F! Eltseq(D[1])),C! kr(F! Eltseq(D[2]))]: D in red];
+		redui:=[[In(C! kr(F! Eltseq(D[1]))),In(C! kr(F! Eltseq(D[2])))]: D in red];
+
+		bns:=[];	
+			for i in [1..#redu] do
+			if redu[i][1] ne 0 then
+			bns:=bns cat [[redu[i][1],0,redu[i][2],redui[i][1]]];
+			else 
+			bns:=bns cat [[redu[i][1],redui[i][2],redu[i][2],0]];
+			end if;
+			end for;
+		Ma:=[* Matrix(C,2,2,bb) : bb in bns *];
+		ans:=ans cat [* Ma *];
+
+		else 
+		return "PLEASE NOT A RAMIFIED PRIME";
+
+		end if;
+
+
+
+
+		end for;
+
+		cns:=[* *];
+
+		for j in [1..#P] do
+		cns:=cns cat [* [* ans[i][j]: i in [1..#primes]*] *];
+		end for;
+
+		return cns,ans;
+
+
+		end function;
+
+
+Projlift:=function(F,c,f,pres);
+	P:=Por1(F,c);
+	q:=quo<Z|c>;
+	ans:=[];
+
+	for p in P do
+	a:=q! p[1][1];
+	b:=q! p[2][1];
+	E:=exists(t){[c,d]: c in q, d in q | a*d-b*c eq q!1};
+	cc:=t[1];
+	dd:=t[2];
+	ans:= ans cat [Matrix(q,2,2,[a,cc,b,dd])];
+	end for;
+
+	primes:=Factorization(c);
+
+
+
+
+	matlifts:=function(M,kr,p,pr)
+
+	if IsSplit(pr) then
+	q:=quo<Z|p>;
+	MM:=ChangeRing(M,q);
+	E:=Eltseq(MM);
+	K:=Codomain(kr);
+	EL:=[kr(F! Eltseq(e)) : e in E];
+	return Matrix(K,2,2,EL);
+	else
+	q:=quo<Z|p>;
+	MM:=ChangeRing(M,q);
+	E:=Eltseq(MM);
+	K:=Codomain(kr);
+	P<x>:=PolynomialRing(K);
+	un:=Roots(P! f)[1][1];
+
+	 lif:=function(v)
+	 return K! v[1]+K! un*v[2];
+	 end function;
+	EL:=[lif(Eltseq(e)) : e in E];
+	return Matrix(K,2,2,EL);
+	end if;
+
+	end function;
+
+	bns:=[* *];
+	cns:=[];
+	dns:=[];
+
+	for p in primes do
+	_,T,k:=pMatrixRing(A1,p[1]: Precision:=pres); /*This is where the AO,A1 thing is since pMatrixRings is slightly broken*/
+	E:=[* matlifts(a,k,p[1]^p[2],p[1]): a in ans *];
+	bns:=bns cat [* E *];
+	cns:=cns cat [T];
+	dns:=dns cat [k];
+	end for;
+
+
+
+
+	ens:=[* *];
+
+	for j in [1..#P] do
+	ens:=ens cat [* [* bns[i][j]: i in [1..#primes]*] *];
+	end for;
+
+
+
+	return ens,cns,dns,primes; 	
+
+
+
+
+
+	end function;
+
+
+Projlift2:=function(F,c,f,pres);
+	P:=Por1(F,c);
+	q:=quo<Z|c>;
+	ans:=[];
+
+	for p in P do
+	a:=q! p[1][1];
+	b:=q! p[2][1];
+	E:=exists(t){[c,d]: c in q, d in q | (a)*d-(b)*c eq q!1};
+	cc:=t[1];
+	dd:=t[2];
+	ans:= ans cat [Matrix(q,2,2,[a,cc,b,dd])];
+	end for;
+
+	primes:=Factorization(c);
+
+
+
+
+	matlifts:=function(M,kr,p,pr)
+
+		if IsSplit(pr) then
+		qq:=quo<Z|p>;
+		MM:=ChangeRing(M,qq);
+		E:=Eltseq(MM);
+		K:=Codomain(kr);
+		EL:=[kr(F! Eltseq(e)) : e in E];
+		return Matrix(K,2,2,EL);
+		else
+		qq:=quo<Z|p>;
+		MM:=ChangeRing(M,qq);
+		E:=Eltseq(MM);
+		K:=Codomain(kr);
+		P<x>:=PolynomialRing(K);
+		un:=Roots(P! f)[1][1];
+
+		 lif:=function(v)
+		 return K! v[1]+K! un*v[2];
+		 end function;
+		EL:=[lif(Eltseq(e)) : e in E];
+		return Matrix(K,2,2,EL);
+		end if;
+
+		end function;
+
+	bns:=[* *];
+	cns:=[];
+	dns:=[];
+
+	for p in primes do
+
+	if IsSplit(p[1]) then
+	_,T,k:=pMatrixRing(A1,p[1]: Precision:=pres);
+	E:=[* matlifts(a,k,p[1]^p[2],p[1]): a in ans *];
+	bns:=bns cat [* E *];
+	cns:=cns cat [T];
+	dns:=dns cat [k];
+
+	else 
+
+	_,T,k:=pMatrixRing(A1,p[1]: Precision:=pres);
+	E:=[* matlifts(a,k,p[1]^p[2],p[1]): a in ans *];
+	bns:=bns cat [* E *];
+	cns:=cns cat [T];
+	dns:=dns cat [k];
+
+	end if;
+	end for;
+
+
+
+
+	ens:=[* *];
+
+	for j in [1..#P] do
+	ens:=ens cat [* [* bns[i][j]: i in [1..#primes]*] *];
+	end for;
+
+
+
+	return ens,cns,dns,primes; 	
+
+
+
+
+
+	end function;
+
+
+totpos:=function(F,p);
+	_,a:=IsPrincipal(p);
+	U,t:=UnitGroup(F);
+	u1:=t(U.2);
+	v1:=1/u1;
+	if IsTotallyPositive(a) then
+	   return a;
+	elif IsTotallyPositive(a*u1) then
+	   return a*u1;
+	elif IsTotallyPositive(a*v1) then
+	 return a*v1;
+	else
+		while not IsTotallyPositive(a) do
+	  	a:=a*t(Random(U));
+		end while;
+	  return F!a;
+	end if;
+	end function;
+
+
+TotPosGen:=function(F,p,j);
+	/*This finds a totally positive generator of the ideal p, and it does it j times and then takes the one with smallest trace*/
+	ans:=[];
+	for i in [1..j] do
+	ans:=ans cat [totpos(F,p)];
+	end for;
+	e:=[Trace(x): x in ans];
+	v:=Min(e);
+	T:=[x : x in ans | Trace(x) eq v];
+	return T[1];
+	end function;
+
+
+f:=function(i,j)  /*This function gives the diagonal ordering of the basis elements, called Bi in the thesis*/
+	return (i+j+1)*(i+j)/2+j;
+	end function;
+
+
+
+
+fi:=function(n);/*This is the inverse of f*/
+	i:=Floor((-1+Sqrt(1+8*n))/2);
+	return [Integers()! ((i*(3+i)/2)-n), Integers()! (n-(i*(i+1)/2))];
+	end function;
+
+
+EP:=function(j,i); /* this was only for parallel weights*/
+	m:=Maximum([i,j]);
+	if i ne m then
+	 return j^2+i;
+	else return i^2+i+j;
+	end if;
+	end function;
+
+EPi:=function(n)
+
+	a:=Floor(Sqrt(n));
+	if n-a^2 lt a then 
+	return [a,n-a^2];
+	else return [n-a^2-a,a];
+	end if;
+	end function;
+
+EP2:=function(j,i,l,k);/*This is used to order the basis in a way in which the first (k1-1)(k_2-1) basis elements are the basis of the classical subspace in weight k1,k2, so it looks like rectangles*/
+
+
+
+	d:=k-l;
+
+	if d eq 0 then
+
+	return EP(j,i);
+
+
+	else 
+
+	if i lt l and j lt k then 
+	return i*k+j;
+	elif i + d ge j then
+	return (i)*(i+d)+j;
+	else return (j-d)*j+2*j-i-d;
+	end if;
+	end if;
+	end function;
+
+
+EP2i:=function(n,l,k) /* The inverse of EP2*/
+	if l-k eq 0 then
+	return EPi(n);
+	else 
+	C:=exists(t){[i,j]: i,j in [0..n+l+k]| EP2(j,i,l,k) eq n};
+	return t;
+	end if;
+	end function;
+
+
+
+Inte:=function(x); /*This checks that a matrix in integral*/
+	a:=x[1][1];
+	b:=x[1][2];
+	c:=x[2][1];
+	d:=x[2][2];
+
+	if Valuation(c) ge 0 and Valuation(a) ge 0 and Valuation(b) ge 0 and Valuation(d) ge 0 and Valuation(a*d-b*c) eq 0 then
+	return true;
+	else
+	return false;
+	end if;
+	end function;
+
+
+Integ:=function(x,i);/* this checks the matrix has integral entries and is invertible in over the fraction field*/
+	a:=x[1][1];
+	b:=x[1][2];
+	c:=x[2][1];
+	d:=x[2][2];
+
+	if Valuation(c) ge i and Valuation(a) ge 0 and Valuation(b) ge 0 and Valuation(d) eq 0 and a*d-b*c ne 0  then
+	return true;
+	else
+	return false;
+	end if;
+	end function;
+
+
+
+quatfactor:=function(Neo,T,u,s)
+
+	l:=#T;
+
+
+
+	D:=[[* r,n *]: r in NN2, n in Neo | &and[Integ((n[i])^-1*T[i](AO! r^-1)*u[i],s[i]): i in [1..l]] ];
+
+
+
+	return D;
+
+
+
+	end function;
+
+
+quatfactor2:=function(Neo,T,u) /*This is used to factor elements in the quaternion algebra into the cosets of the shim var*/
+
+	l:=#T;
+
+
+
+
+	D:=exists(t){[* r,n *]: r in NN2, n in Neo | &and[Integ((n[i])^-1*T[i](r^-1)*u[i]): i in [1..l]] };
+
+
+
+	return t;
+
+
+
+	end function;
+
+
+
+quatfactor3:=function(Neo,T,u,s,j)
+
+	l:=#T;
+
+
+
+	D:=exists(t){[* r,n *]: r in NN2, n in Neo | &and[Integ((n[i])^-1*T[i](AO! r^-1)*u[i],s[i]): i in [1..l]] };
+
+
+
+
+	return t;
+
+
+
+	end function;
+
+
+
+intquatfactor:=function(Np,T,u)/*This is used to factor elements in the quaternion algebra into the cosets of the shim var*/
+
+	l:=#T;
+
+
+	D:=exists(r){n : n in Np | &and[Inte(T[i](AO!n)*u[i]) : i in [1..l]] }; 
+
+	   
+	return r;
+
+
+	end function;
+
+
+
+	multipl:=function(X,Y,r,j)
+
+	return [* X[k]^(r)*Y[k]^(j): k in [1..#X] *];
+	end function;
+
+
+Inertcase:=function(F,c,p,f,pres,q,ss,con) /*This function gives the elemets of the brandt matrix used to construct the operator. It gives whats needed for Up and also Tq for q also divingin the level, but only one Tq, I haven't made it so you can get them all at once or other hecke ops not divding the level. The impit is as follows: F is the number field, c is the level, p the prime, f is the defining poly of F_p (the completion), q is the prime for Tq, ss are the exponents of p,q appearing in the factorization of c, and con is the exponent of p in the factorization of c (the reason for ss and con is that sometimes magma orders the p,q in the factorization of c in a weird way so I just make sure to manually put the correct order) This code is specific to p=2*/
+
+	Neo,Ts,kr:=Projlift(F,c,f,pres);
+
+
+	l:=#Ts;
+
+	K:=BaseRing(Codomain(Ts[1]));
+	P<x>:=PolynomialRing(K);
+	un:=Roots(P! f)[1][1];
+
+
+	Np1:=Norm_p_elements2(F,AO,p);
+
+
+	qq:=pq(F,q);
+	_,Tq:=pMatrixRing(AO,pq(F,q));
+	nq:=TotPosGen(F,pq(F,q),300);
+	Nq1:=Norm_p_elements2(F,AO,nq);
+
+
+	field3:=BaseRing(Codomain(Ts[2]));
+	field2:=K;
+
+
+	H:=[K!0, K!1, K! un, K! (1+un)]; /*this is pq(F,) specific!*/
+
+	Up2:=[Matrix(field2,2,2,[p,0,(K!j)*(p^con),1]): j in H];
+	Uq2:=[Matrix(field3,2,2,[q,0,j*q,1]): j in [0..q-1]];
+
+
+
+	alex:=[* Matrix(BaseRing(Codomain(Ts[j])),2,2,[1,0,0,1]): j in [1..l] *]; 
+
+	quaa2:=function(AA,u)
+	a:=AA;
+	a[1]:=u;
+	return a;
+	end function;
+
+
+	quaa3:=function(AA,u)
+	a:=AA;
+	a[2]:=u;
+	return a;
+	end function;
+
+
+
+
+	UP2:=[quaa2(alex,u): u in Up2];
+	UQ2:=[quaa3(alex,u): u in Uq2];
+
+	Sp:=function(x)
+	return [*Ts[i](x): i in [1..l] *];
+	end function;
+
+	dd:=function(n,u,Np)
+	II:=intquatfactor(Np,Ts,multipl(n,u,1,-1));
+	return II;
+	end function;
+	 
+	ans:=[* *];
+	for n in Neo do
+		for u in UP2 do
+		x:=dd(n,u,Np1);
+		E:=[* t(x): t in Ts *]; 
+		EE:=multipl(E,multipl(n,u,1,-1),1,1);
+		D:=quatfactor3(Neo,Ts,EE,ss,8);
+		r:=D[1];
+		nn:=D[2];
+		rr:=[* Ts[i](r): i in [1..l] *];
+		v:=multipl(nn,rr,-1,-1);
+		v2:=multipl(v,EE,1,1);
+		ans:=ans cat [* [*[Index(Neo,n), Index(Neo,nn)], multipl(v2,u,1,1)*] *];
+		end for;
+	end for;
+
+
+	bns:=[* *];
+	for n in Neo do
+		for u in UQ2 do
+		x:=dd(n,u,Nq1);
+		E:=[* t(x): t in Ts *]; 
+		EE:=multipl(E,multipl(n,u,1,-1),1,1);
+		D:=quatfactor3(Neo,Ts,EE,ss,7);
+		r:=D[1];
+		nn:=D[2];
+		rr:=[* Ts[i](r): i in [1..l] *];
+		v:=multipl(nn,rr,-1,-1);
+		v2:=multipl(v,EE,1,1);
+		bns:=bns cat [* [*[Index(Neo,n), Index(Neo,nn)], multipl(v2,u,1,1)*] *];
+		end for;
+	end for;
+
+
+
+
+
+	return  ans,bns, #Neo, field2,kr[1],[Ts[1](x): x in NN2];
+
+	end function;
+
+Inertcase3:=function(F,c,p,f,pres,q,ss,con) /* This is as above but for p=3, really should make this more general */
+
+	Neo,Ts,kr:=Projlift(F,c,f,pres);
+
+
+	l:=#Ts;
+
+	K:=BaseRing(Codomain(Ts[1]));
+	P<x>:=PolynomialRing(K);
+	un:=Roots(P! f)[1][1];
+
+
+	Np1:=Norm_p_elements2(F,AO,p);
+
+
+	qq:=pq(F,q);
+	_,Tq:=pMatrixRing(AO,pq(F,q));
+	nq:=TotPosGen(F,pq(F,q),300);
+	Nq1:=Norm_p_elements2(F,AO,nq);
+
+
+	field3:=BaseRing(Codomain(Ts[2]));
+	field2:=K;
+
+	HReal:=[K! 0, K! 1, K!2, K! un, K! 1+ un, K! 2+un,K! 1+2*un, K! 2+2*un, K! 2*un];
+
+
+	Up2:=[Matrix(field2,2,2,[p,0,(K!j)*(p^con),1]): j in HReal];
+	Uq2:=[Matrix(field3,2,2,[q,0,j*q,1]): j in [0..q-1]];
+
+
+
+	alex:=[* Matrix(BaseRing(Codomain(Ts[j])),2,2,[1,0,0,1]): j in [1..l] *]; 
+
+	quaa2:=function(AA,u)
+	a:=AA;
+	a[1]:=u;
+	return a;
+	end function;
+
+
+	quaa3:=function(AA,u)
+	a:=AA;
+	a[2]:=u;
+	return a;
+	end function;
+
+
+
+
+	UP2:=[quaa2(alex,u): u in Up2];
+	UQ2:=[quaa3(alex,u): u in Uq2];
+
+	Sp:=function(x)
+	return [*Ts[i](x): i in [1..l] *];
+	end function;
+
+	dd:=function(n,u,Np)
+	II:=intquatfactor(Np,Ts,multipl(n,u,1,-1));
+	return II;
+	end function;
+
+	 
+	ans:=[* *];
+	for n in Neo do
+		for u in UP2 do
+		x:=dd(n,u,Np1);
+		E:=[* t(x): t in Ts *]; 
+		EE:=multipl(E,multipl(n,u,1,-1),1,1);
+		D:=quatfactor3(Neo,Ts,EE,ss,8);
+		r:=D[1];
+		nn:=D[2];
+		rr:=[* Ts[i](r): i in [1..l] *];
+		v:=multipl(nn,rr,-1,-1);
+		v2:=multipl(v,EE,1,1);
+		ans:=ans cat [* [*[Index(Neo,n), Index(Neo,nn)],  multipl(v2,u,1,1)*]*];
+		end for;
+	end for;
+
+
+	bns:=[* *];
+	for n in Neo do
+		for u in UQ2 do
+		x:=dd(n,u,Nq1);
+		E:=[* t(x): t in Ts *]; 
+		EE:=multipl(E,multipl(n,u,1,-1),1,1);
+		D:=quatfactor3(Neo,Ts,EE,ss,7);
+		r:=D[1];
+		nn:=D[2];
+		rr:=[* Ts[i](r): i in [1..l] *];
+		v:=multipl(nn,rr,-1,-1);
+		v2:=multipl(v,EE,1,1);
+		bns:=bns cat [* [*[Index(Neo,n), Index(Neo,nn)], multipl(v2,u,1,1)*] *];
+		end for;
+	end for;
+
+	
+	CHACHA:= [Precision(ans[k][2][1][i][j]): i,j in [1..2], k in [1..#ans]];
+	assert &and[CHACHA[i] gt 0 : i in [1..#CHACHA]];
+
+	return  ans,bns, #Neo, field2,kr[1],[Ts[1](x): x in NN2],Neo,UP2,UQ2,Np1,Nq1,dd,Up2,Uq2,Ts;
+
+	end function;
+
+
+
+
+TVI:=function(M,f1,f2,pres,p,KRO);/* again for printing matrices to sage*/
+
+	D:=ext<pAdicField(p,pres)|f1>;
+	P<x>:=PolynomialRing(D);
+	xe:=Roots(P! f2)[1][1];
+
+
+	kap:=function(x);
+	sx:=Eltseq(x);
+	fl:=[D! sx[i]*xe^(i-1): i in [1..#sx]];
+	return &+fl;
+	end function;
+
+	MM:=Matrix(D,Ncols(M),Ncols(M),[kap(x@@KRO): x in Eltseq(M)]);
+
+	O:=Eltseq(MM);
+	OI:=[Eltseq(x): x in O];
+
+	return OI;
+	end function;
+
+
+
+
+
+
+MIT2:=function(C,CC,kw1,kw2,n,p,fdo,fiel,p1,T,chi,press);/* This uses the fi ordering*/
+	
+	maa:=Maximum(kw1,kw2);
+	mii:=Minimum(kw1,kw2);
+	dif:=maa-mii;
+
+	matt:=Maximum([Maximum(EP2i(s,kw1-1,kw2-1)) : s in [0..n]]);
+
+
+	pres:=matt;
+
+
+	l:=fdo^2;
+	KK:=fiel;
+	KK2:=ChangePrecision(KK,press);
+
+	F2:=Domain(T);
+
+	GG:=Parent(chi);
+	Cyc:=GG`TargetRing;
+	FI:=Compositum(F2,Cyc);
+	Comp,kro:=Completion(FI,pq(FI,p): Precision:=press);
+	CC2:=ChangePrecision(Comp,press);
+	fx:=DefiningPolynomial(CC2,pAdicField(CC2));
+	FU:=ChangePrecision(Codomain(T),Precision(pAdicField(CC2)));
+	Ry:=PolynomialRing(FU);
+	fg:=Factorization(Ry! fx)[1][1];
+
+	Ota:=function(f);
+			deedee:=Degree(f);
+			if deedee eq 1 then
+			return FU;
+			elif IsInertial(f) then
+			return ext<FU|f>;
+			elif IsEisenstein(f) then
+			return ext<FU|f>;
+			else 
+			dexter:=Degree(FU,pAdicField(FU));
+			return UnramifiedExtension(FU, Integers()! deedee/dexter);
+			end if;
+			end function;
+
+
+	C4:=Ota(fg);
+
+
+
+
+
+	Rx:=PolynomialRing(C4);
+	ff:=DefiningPolynomial(FI);
+
+	xx:=Roots(Rx! ff)[1][1];
+
+	kap:=function(x);
+		sx:=Eltseq(x);
+		fl:=[C4! sx[i]*xx^(i-1): i in [1..#sx]];
+		return &+fl;
+		end function;
+
+
+
+	G:=Automorphisms(KK2);
+	w1:=G[1];
+	w2:=G[2];
+
+
+	pullb:=function(x,auto)
+		return auto(x);
+		end function;
+
+
+	char:=function(x)
+		return  kro(FI! chi(x@@T));
+		end function;
+
+
+	entries:=function(N,K);
+
+		L:=Eltseq(N);
+		a1:=L[1];
+		b1:=L[2];
+		c1:=L[3];
+		d1:=L[4];
+
+
+
+		a:=K! pullb(a1,w1);
+		a2:=K!  pullb(a1,w2);
+		b:=K! pullb(b1,w1);
+		b2:=K!  pullb(b1,w2);
+
+		c:=K! pullb(c1,w1);
+		c2:=K!  pullb(c1,w2);
+
+		d:=K! pullb(d1,w1);
+		d2:=K!  pullb(d1,w2);
+
+		charac:=K! Integers()! char(d1);
+
+		return [a,b,c,d,a2,b2,c2,d2,charac];
+
+		end function;
+
+
+	CoHMF2:=function(bb,aa,dd,cc,kk1,kk2,N,FIELD);
+
+
+
+		min:=Minimum(kk1,kk2);
+
+
+
+		if kk1 eq kk2 then 
+			v1:=0;
+			v2:=0;
+		elif kk1 eq min then
+			di:=kk2-kk1;
+			dif:=di/2;
+			v1:=Integers()! dif;
+			v2:=0;
+		else 
+			di:=kk1-kk2;
+			dif:=di/2;
+			v1:=0;
+			v2:=Integers()! dif;
+		end if;
+
+
+
+		K:=FIELD;
+		i:=dd;
+		m:=bb;
+		l:=aa;
+		n:=cc;
+
+		a:=N[1];
+		b:=N[2];
+		c:=N[3];
+		d:=N[4];
+		a2:=N[5];
+		b2:=N[6];
+		c2:=N[7];
+		d2:=N[8];
+
+		charac:=N[9];
+
+
+		if c ne 0 and a ne 0 then
+
+		ff1:=[(a^(m-r))*(b^(i-m+r))*Binomial(i,m-r)*Binomial(kk1-1-i,r)*c^r*d^(-r): r in [0..m]];
+		f:=&+ff1;
+		det:=(a*d-b*c)^v1;
+		coe1:=det*f*d^(kk1-1-i);
+
+		else 
+
+		f:=(a^(m))*(b^(i-m))*Binomial(i,m)*Binomial(kk1-i-1,0);
+		coe1:=f*d^(kk1-1-i);
+		end if;
+
+		if c2 ne 0 and a2 ne 0 then
+
+		ff2:=[(a2^(l-s))*(b2^(n-l+s))*Binomial(n,l-s)*Binomial(kk2-1-n,s)*c2^s*d2^(-s): s in [0..l]];
+		f2:=&+ff2;
+		coe2:=(a2*d2-b2*c2)^(v2)*f2*d2^(kk2-1-n);
+
+
+		else 
+
+		f:=(a2^(l))*(b2^(n-l))*Binomial(n,l)*Binomial(kk2-n-1,0);
+		coe2:=f*d2^(kk2-1-n);
+
+		end if;
+
+		return charac*coe1*coe2,ff1,ff2;
+
+
+		end function;
+
+
+
+	CoHMF3:=function(bb,aa,dd,cc,kk1,kk2,N,FIELD,bound1,bound2);
+
+
+
+		min:=Minimum(kk1,kk2);
+
+
+
+		if kk1 eq kk2 then 
+			v1:=0;
+			v2:=0;
+		elif kk1 eq min then
+			di:=kk2-kk1;
+			dif:=di/2;
+			v1:=dif;
+			v2:=0;
+		else 
+			di:=kk1-kk2;
+			dif:=di/2;
+			v1:=0;
+			v2:=dif;
+		end if;
+
+
+
+		K:=FIELD;
+		i:=dd;
+		m:=bb;
+		l:=aa;
+		n:=cc;
+
+		a:=N[1];
+		b:=N[2];
+		c:=N[3];
+		d:=N[4];
+		a2:=N[5];
+		b2:=N[6];
+		c2:=N[7];
+		d2:=N[8];
+
+		charac:=N[9];
+
+
+		if c ne 0 and a ne 0 then
+
+		ff1:=[(a^(m-r))*(b^(i-m+r))*Binomial(i,m-r)*Binomial(kk1-1-i,r)*c^r*d^(-r): r in [0..bound1]];
+		f:=&+ff1;
+		det:=(a*d-b*c)^(v1);
+		coe1:=det*f*d^(kk1-1-i);
+
+		else 
+
+		f:=(a^(m))*(b^(i-m))*Binomial(i,m)*Binomial(kk1-i-1,0);
+		coe1:=f*d^(kk1-1-i);
+		end if;
+
+		if c2 ne 0 and a2 ne 0 then
+
+		ff2:=[(a2^(l-s))*(b2^(n-l+s))*Binomial(n,l-s)*Binomial(kk2-1-n,s)*c2^s*d2^(-s): s in [0..bound2]];
+		f2:=&+ff2;
+		coe2:=(a2*d2-b2*c2)^(v2)*f2*d2^(kk2-1-n);
+
+
+		else 
+
+		f:=(a2^(l))*(b2^(n-l))*Binomial(n,l)*Binomial(kk2-n-1,0);
+		coe2:=f*d2^(kk2-1-n);
+
+		end if;
+
+		return charac*coe1*coe2;
+
+
+		end function;
+
+
+
+	COEFHMFS2:=function(i,j,k,l,kk1,kk2,L,FIELD);
+
+
+
+
+		if L ne [* *] then
+
+		S:=[CoHMF2(i,j,k,l,kk1,kk2,r,FIELD): r in L];
+
+		return &+S;
+
+		else 
+
+		return 0;
+		end if;
+		end function;
+
+	COEFHMFS3:=function(i,j,k,l,kk1,kk2,L,FIELD,b1,b2);
+
+
+
+
+		if L ne [* *] then
+
+		S:=[CoHMF3(i,j,k,l,kk1,kk2,r,FIELD,b1,b2): r in L];
+
+		return &+S;
+
+		else 
+
+		return 0;
+		end if;
+		end function;
+
+
+	P<z>:=PolynomialRing(KK2);
+
+
+
+	ert:=[* *];
+		for i,j in [1..fdo] do
+		Eij:=[x: x in C | x[1] eq [i,j]];			
+		E2:=[* entries(x[2][p1],KK2)  : x in Eij *];
+		ert:=ert cat [* E2 *];
+		end for;	
+
+		
+	
+	ert2:=[* *];
+		for i,j in [1..fdo] do
+		Eij:=[x: x in CC | x[1] eq [i,j]];			
+		E2:=[* entries(x[2][p1],KK2)  : x in Eij *];
+		ert2:=ert2 cat [*E2*];
+		end for;
+		
+
+    
+	aa2:=function(l,n,r)
+		ans2:=[];
+		for j:=0 to l do
+		ii1:=fi(j)[1];
+		ji1:=fi(j)[2];
+		 for i:=0 to n do 
+		li1:=fi(i)[1];
+		ki1:=fi(i)[2];
+		ans2:=ans2 cat [COEFHMFS2(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2)]; 
+		end for; 
+		end for;
+		return ans2;
+		end function;
+		/*
+		aa2:=function(l,n,r)
+	ans2:=[];
+	for j:=0 to l do
+	ii1:=EP2i(j,kw1-1,kw2-1)[1];
+	ji1:=EP2i(j,kw1-1,kw2-1)[2];
+	 for i:=0 to n do 
+	li1:=EP2i(i,kw1-1,kw2-1)[1];
+	ki1:=EP2i(i,kw1-1,kw2-1)[2];
+	ans2:=ans2 cat [COEFHMFS2(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2)]; 
+	end for; 
+	end for;
+	return ans2;
+	end function;	*/
+
+
+	arc:=function(n,r)
+
+		ii1:=fi(n)[1];
+		ji1:=fi(n)[2];
+		li1:=fi(n)[1];
+		ki1:=fi(n)[2];
+		return COEFHMFS2(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2); 
+
+		end function;
+
+
+	arctic:=function(n,m,r,b1,b2)
+
+		ii1:=fi(n)[1];
+		ji1:=fi(n)[2];
+		li1:=fi(m)[1];
+		ki1:=fi(m)[2];
+		return COEFHMFS3(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2,b1,b2); 
+
+		end function;
+
+
+
+	X3:=function(n);
+		ask:=[];
+		for i in [1..l] do
+		ask:=ask cat [arc(n,ert[i])];
+		end for;
+		return Matrix(KK2,fdo,fdo,ask);
+		end function;
+
+		X4:=function(n,m,b1,b2);
+		ask:=[];
+		for i in [1..l] do
+		ask:=ask cat [arctic(n,m,ert[i],b1,b2)];
+		end for;
+		return Matrix(KK2,fdo,fdo,ask);
+		end function;
+
+
+
+	X2:=function(i,j,r)
+		M:=Matrix(KK2,i,j,aa2(i-1,j-1,r));
+		return M;
+		end function;
+
+
+
+
+	ant:=[];
+	for i in [1..l] do 
+	ant:=ant cat [X2(n,n,ert[i])];
+	end for;
+
+	
+	ant2:=[];
+	for i in [1..l] do 
+	ant2:=ant2 cat [X2(n,n,ert2[i])];
+	end for;
+	
+
+
+
+	MQT:=BlockMatrix(fdo,fdo,ant);
+
+
+	
+	MQT2:=BlockMatrix(fdo,fdo,ant2);
+	
+
+
+
+
+	return MQT,MQT2,T,X3,X4, ant,X2,[ert[i]: i in [1..fdo^2]] ,KK2,CoHMF2;
+	end function;
+
+
+
+
+
+MIT22class:=function(C,CC,kw1,kw2,n,p,fdo,fiel,p1,T,chi,va,vi,press); /*This takes the output of Inertcase and gives you the matrix of Up and Tq acting on classical subspaces. If the output of Inert case is Wa,Wb,fdo,fie,KE. Then the imput of this is C=Wa, CC=Wb (this is the data for constructing the matrices),kw1,kw2 are components of the algebraic part of the weight, n is how big you want the matrices (note that they will have size h*n where h is the class number of (D,Level)), fdo=h, fiel is the base field for the matrices given out of Inertcase, p1 is the posisiton of p in the factorization of the level, this is because I store adelic matrices as a set of matrices, one for each place im interested in, so I need to tell magma which one corresponds to p, this should be automated, but magma..., T=KE this is the completion map from F to Fp, chi is the character,va,vi are for the teichmuller char, and press is the precision for the matrices.*/
+
+	/* This takes the Thetas in the split case and computes the matrices of the hecke operator
+	*/
+	maa:=Maximum(kw1,kw2);
+	mii:=Minimum(kw1,kw2);
+	dif:=maa-mii;
+
+	matt:=Maximum([Maximum(EP2i(s,kw1-1,kw2-1)) : s in [0..n]]);
+
+
+	pres:=matt;
+
+
+
+	l:=fdo^2;
+	KK:=fiel;
+	KK2:=ChangePrecision(KK,press);
+
+	F2:=Domain(T);
+
+	GG:=Parent(chi);
+	Cyc:=GG`TargetRing;
+	FI:=Compositum(F2,Cyc);
+	Comp,kro:=Completion(FI,pq(FI,p): Precision:=press);
+	CC2:=ChangePrecision(Comp,press);
+	fx:=DefiningPolynomial(CC2,pAdicField(CC2));
+	FU:=ChangePrecision(Codomain(T),Precision(pAdicField(CC2)));
+	Ry:=PolynomialRing(FU);
+	fg:=Factorization(Ry! fx)[1][1];
+
+	Ota:=function(f);
+	deedee:=Degree(f);
+	if deedee eq 1 then
+	return FU;
+	elif IsInertial(f) then
+	return ext<FU|f>;
+	elif IsEisenstein(f) then
+	return ext<FU|f>;
+	else 
+	dexter:=Degree(FU,pAdicField(FU));
+	return UnramifiedExtension(FU, Integers()! deedee/dexter);
+	end if;
+	end function;
+
+
+	C4:=Ota(fg);
+
+
+	teichmul:=function(d1,d2,Fi,n1,n2);
+
+	O:=Integers(Fi);
+	q:=ChangePrecision(quo<O|p>,press);
+	r1:=q!d1;
+	r2:=q! d2;
+	return (r1^n1)*(r2^n2);
+	end function;
+
+	teichmul2:=function(d1,d2,Fi,n1,n2);
+
+	O:=Integers(Fi);
+	Pk<x>:=PolynomialRing(O);
+	ro:=Roots(x^6-1);
+	r1:=[ro[i][1]: i in [1..6] | Valuation(d1/ro[i][1]-1) gt 0][1];
+	r2:=[ro[i][1]: i in [1..6] | Valuation(d2/ro[i][1]-1) gt 0][1];
+	return (r1^n1)*(r2^n2);
+	end function;
+
+
+
+	Rx:=PolynomialRing(C4);
+	ff:=DefiningPolynomial(FI);
+
+	xx:=Roots(Rx! ff)[1][1];
+
+	kap:=function(x);
+	sx:=Eltseq(x);
+	fl:=[C4! sx[i]*xx^(i-1): i in [1..#sx]];
+	return &+fl;
+	end function;
+
+
+
+	G:=Automorphisms(KK2);
+	w1:=G[1];
+	w2:=G[2];
+
+
+	pullb:=function(x,auto)
+	return auto(x);
+	end function;
+
+
+	char:=function(x)
+	return  kro(FI! chi(x@@T));
+	end function;
+
+
+	entries:=function(N,K);
+
+	L:=Eltseq(N);
+	a1:=L[1];
+	b1:=L[2];
+	c1:=L[3];
+	d1:=L[4];
+
+
+
+	a:=K! pullb(a1,w1);
+	a2:=K!  pullb(a1,w2);
+	b:=K! pullb(b1,w1);
+	b2:=K!  pullb(b1,w2);
+
+	c:=K! pullb(c1,w1);
+	c2:=K!  pullb(c1,w2);
+
+	d:=K! pullb(d1,w1);
+	d2:=K!  pullb(d1,w2);
+
+	charac:=K! Integers()! char(d1);
+
+	return [a,b,c,d,a2,b2,c2,d2,charac];
+
+	end function;
+
+
+	CoHMF2:=function(bb,aa,dd,cc,kk1,kk2,N,FIELD);
+
+
+
+		min:=Minimum(kk1,kk2);
+
+
+
+		if kk1 eq kk2 then 
+			v1:=0;
+			v2:=0;
+		elif kk1 eq min then
+			di:=kk2-kk1;
+			dif:=di/2;
+			v1:=Integers()! dif;
+			v2:=0;
+		else 
+			di:=kk1-kk2;
+			dif:=di/2;
+			v1:=0;
+			v2:=Integers()! dif;
+		end if;
+
+
+
+		K:=FIELD;
+		i:=dd;
+		m:=bb;
+		l:=aa;
+		n:=cc;
+
+		a:=N[1];
+		b:=N[2];
+		c:=N[3];
+		d:=N[4];
+		a2:=N[5];
+		b2:=N[6];
+		c2:=N[7];
+		d2:=N[8];
+
+		charac:=N[9];
+
+
+		if c ne 0 and a ne 0 then
+
+		ff1:=[(a^(m-r))*(b^(i-m+r))*Binomial(i,m-r)*Binomial(kk1-1-i,r)*c^r*d^(-r): r in [0..m]];
+		f:=&+ff1;
+		det:=(a*d-b*c)^(v1);
+		coe1:=det*f*d^(kk1-1-i);
+
+		elif a ne 0 then 
+
+		f:=(a^(m))*(b^(i-m))*Binomial(i,m)*Binomial(kk1-i-1,0);
+		det:=(a*d-b*c)^(v1);
+		coe1:=det*f*d^(kk1-1-i);
+		
+
+		elif a eq 0 and m eq 0 then
+		f:=(b^(i))*Binomial(i,0)*Binomial(kk1-i-1,0);
+		det:=(a*d-b*c)^(v1);
+		coe1:=det*f*d^(kk1-1-i);
+
+		else coe1:=0;
+
+		end if;
+
+		if c2 ne 0 and a2 ne 0 then
+
+		ff2:=[(a2^(l-s))*(b2^(n-l+s))*Binomial(n,l-s)*Binomial(kk2-1-n,s)*c2^s*d2^(-s): s in [0..l]];
+		f2:=&+ff2;
+		coe2:=(a2*d2-b2*c2)^(v2)*f2*d2^(kk2-1-n);
+
+
+		elif a2 ne 0 then
+
+		f:=(a2^(l))*(b2^(n-l))*Binomial(n,l)*Binomial(kk2-n-1,0);
+		coe2:=(a2*d2-b2*c2)^(v2)*f*d2^(kk2-1-n);
+
+
+		elif a2 eq 0 and l eq 0 then
+
+		f:=b2^(n)*Binomial(n,0)*Binomial(kk2-n-1,0);
+		coe2:=(a2*d2-b2*c2)^(v2)*f*d2^(kk2-1-n);
+
+		else coe2:=0;
+
+		end if;
+
+		return charac*coe1*coe2,ff1,ff2;
+													/* *teichmul2(d,d2,FIELD,va,vi)*/	
+
+		end function;
+
+
+
+	CoHMF3:=function(bb,aa,dd,cc,kk1,kk2,N,FIELD,bound1,bound2);
+
+
+
+		min:=Minimum(kk1,kk2);
+
+
+
+		if kk1 eq kk2 then 
+			v1:=0;
+			v2:=0;
+		elif kk1 eq min then
+			di:=kk2-kk1;
+			dif:=di/2;
+			v1:=dif;
+			v2:=0;
+		else 
+			di:=kk1-kk2;
+			dif:=di/2;
+			v1:=0;
+			v2:=dif;
+		end if;
+
+
+
+		K:=FIELD;
+		i:=dd;
+		m:=bb;
+		l:=aa;
+		n:=cc;
+
+		a:=N[1];
+		b:=N[2];
+		c:=N[3];
+		d:=N[4];
+		a2:=N[5];
+		b2:=N[6];
+		c2:=N[7];
+		d2:=N[8];
+
+		charac:=N[9];
+
+
+		if c ne 0 and a ne 0 then
+
+		ff1:=[(a^(m-r))*(b^(i-m+r))*Binomial(i,m-r)*Binomial(kk1-1-i,r)*c^r*d^(-r): r in [0..bound1]];
+		f:=&+ff1;
+		det:=(a*d-b*c)^v1;
+		coe1:=det*f*d^(kk1-1-i);
+
+		else 
+
+		f:=(a^(m))*(b^(i-m))*Binomial(i,m)*Binomial(kk1-i-1,0);
+		coe1:=f*d^(kk1-1-i);
+		end if;
+
+		if c2 ne 0 and a2 ne 0 then
+
+		ff2:=[(a2^(l-s))*(b2^(n-l+s))*Binomial(n,l-s)*Binomial(kk2-1-n,s)*c2^s*d2^(-s): s in [0..bound2]];
+		f2:=&+ff2;
+		coe2:=(a2*d2-b2*c2)^(v2)*f2*d2^(kk2-1-n);
+
+
+		else 
+
+		f:=(a2^(l))*(b2^(n-l))*Binomial(n,l)*Binomial(kk2-n-1,0);
+		coe2:=f*d2^(kk2-1-n);
+
+		end if;
+
+		return charac*coe1*coe2;
+
+
+		end function;
+
+
+
+	COEFHMFS2:=function(i,j,k,l,kk1,kk2,L,FIELD);
+
+
+
+
+		if L ne [* *] then
+
+		S:=[CoHMF2(i,j,k,l,kk1,kk2,r,FIELD): r in L];
+
+		return &+S;
+
+		else 
+
+		return 0;
+		end if;
+		end function;
+
+	COEFHMFS3:=function(i,j,k,l,kk1,kk2,L,FIELD,b1,b2);
+
+
+
+
+		if L ne [* *] then
+
+		S:=[CoHMF3(i,j,k,l,kk1,kk2,r,FIELD,b1,b2): r in L];
+
+		return &+S;
+
+		else 
+
+		return 0;
+		end if;
+		end function;
+
+
+	P<z>:=PolynomialRing(KK2);
+
+
+
+	ert:=[* *];
+	for i,j in [1..fdo] do
+	Eij:=[x: x in C | x[1] eq [i,j]];			
+	E2:=[* entries(x[2][p1],KK2)  : x in Eij *];
+	ert:=ert cat [* E2 *];
+	end for;	
+
+		
+
+	ert2:=[* *];
+	for i,j in [1..fdo] do
+	Eij:=[x: x in CC | x[1] eq [i,j]];			
+	E2:=[* entries(x[2][p1],KK2)  : x in Eij *];
+	ert2:=ert2 cat [*E2*];
+	end for;
+
+
+
+	aa2:=function(l,n,r)
+	ans2:=[];
+	for j:=0 to l do
+	ii1:=EP2i(j,kw1-1,kw2-1)[1];
+	ji1:=EP2i(j,kw1-1,kw2-1)[2];
+	 for i:=0 to n do 
+	li1:=EP2i(i,kw1-1,kw2-1)[1];
+	ki1:=EP2i(i,kw1-1,kw2-1)[2];
+	ans2:=ans2 cat [COEFHMFS2(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2)]; 
+	end for; 
+	end for;
+	return ans2;
+	end function;
+
+
+	arc:=function(n,r)
+
+	ii1:=EPi(n)[1];
+	ji1:=EPi(n)[2];
+	li1:=EPi(n)[1];
+	ki1:=EPi(n)[2];
+	return COEFHMFS2(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2); 
+
+	end function;
+
+
+	arctic:=function(n,m,r,b1,b2)
+
+	ii1:=EPi(n)[1];
+	ji1:=EPi(n)[2];
+	li1:=EPi(m)[1];
+	ki1:=EPi(m)[2];
+	return COEFHMFS3(ii1,ji1,li1,ki1,kw1-1,kw2-1,r,KK2,b1,b2); 
+
+	end function;
+
+
+
+	X3:=function(n);
+	ask:=[];
+	for i in [1..l] do
+	ask:=ask cat [arc(n,ert[i])];
+	end for;
+	return Matrix(KK2,fdo,fdo,ask);
+	end function;
+
+	X4:=function(n,m,b1,b2);
+	ask:=[];
+	for i in [1..l] do
+	ask:=ask cat [arctic(n,m,ert[i],b1,b2)];
+	end for;
+	return Matrix(KK2,fdo,fdo,ask);
+	end function;
+
+
+
+	X2:=function(i,j,r)
+	M:=Matrix(KK2,i,j,aa2(i-1,j-1,r));
+	return M;
+	end function;
+
+
+
+
+	ant:=[];
+	for i in [1..l] do 
+	ant:=ant cat [X2(n,n,ert[i])];
+	end for;
+
+
+	ant2:=[];
+	for i in [1..l] do 
+	ant2:=ant2 cat [X2(n,n,ert2[i])];
+	end for;
+
+
+
+
+	MQT:=BlockMatrix(fdo,fdo,ant);
+
+
+
+	MQT2:=BlockMatrix(fdo,fdo,ant2);
+
+
+
+
+
+	return MQT,T,MQT2,X3,X4, ant,X2,[ert[i]: i in [1..fdo^2]] ,KK2,CoHMF2;
+	end function;
+
+
+
+
+
+
+CS:=function(k1,k2); /*computes classical slopes using Lassina's  magma code*/
+	H:=HilbertCuspForms(F,pq(F,11),[k1,k2]);
+	M:=HeckeOperator(H,pq(F,2));
+	P:=CharacteristicPolynomial(M);
+	K:=BaseRing(M);
+	Ko,kr:=Completion(K,pq(K,2));
+	Po:=PolynomialRing(Ko);
+	Pr:=Po! [kr(Coefficient(P,i)): i in [0..Degree(P)]];
+	v:=ValuationsOfRoots(Pr);
+	return v;
+	end function;
+
+
+ComputeOverconvergentUp:=function(pres);/*This retures a function called Upmat(k1,k2,n) which gives a 16*n x 16*n matrix approxiamtion of U2 acting on weight [k1,k2], level 8*p11 and if ki are even it uses psi as in the thesis, and for ki odd it uses chi.  */
+	WA,WB,ns,fie,KE:=Inertcase(F,pq(F,11)*pq(F,2)^3,2,x^2+x+1,pres,11,[3,1],3);
+
+	Upmat:=function(k1,k2,N)
+		if k1 mod 2 eq 0 then
+			G:=HeckeCharacterGroup(pq(F,2)^3);
+			U2,KRO,UB:=MIT2(WA,WB,k1,k2,N,2,ns,fie,1,KE,G.1,pres);
+			return U2 /*TVI(U2,x^2+x+1,x^2-5,pres,2,KRO)*/;
+	    else 
+	      	G:=DirichletGroup(pq(F,2)^3);
+			U,j:=UnitGroup(Z);
+			e:=j(U.2);
+			E:=Elements(G);
+			ch:=[cha : cha in E | cha(e) eq -1 and cha(-1) eq 1 and cha(F.1) eq 1 ];
+	      	U2,KRO,UB:=MIT2(WA,WB,k1,k2,N,2,ns,fie,1,KE,ch[1],pres);
+			return U2 /*TVI(U2,x^2+x+1,x^2-5,pres,2,KRO)*/;
+		end if;
+	end function;	
+	return Upmat;
+	end function;
+
+ComputeClassicalUp:=function(pres);/*This retures a function called Upmat(k1,k2) which returns the U2 and T11 hecke ops in weight [k1,k2] in level 8*p11 and if ki are even it uses psi as in the thesis, and for ki odd it uses chi. It aslo give you T11 which you can check commutes with U2*/
+	WA,WB,ns,fie,KE:=Inertcase(F,pq(F,11)*pq(F,2)^3,2,x^2+x+1,pres,11,[3,1],3);	
+	Upmat:=function(k1,k2)
+		if k1 mod 2 eq 0 then
+			G:=HeckeCharacterGroup(pq(F,2)^3);
+			U2,KRO,UB:=MIT22class(WA,WB,k1,k2,(k1-1)*(k2-1),2,ns,fie,1,KE,G.1,0,0,pres);
+			return U2,UB /*TVI(U2,x^2+x+1,x^2-5,pres,2,KRO)*/;
+	    else 
+	      	G:=DirichletGroup(pq(F,2)^3);
+			U,j:=UnitGroup(Z);
+			e:=j(U.2);
+			E:=Elements(G);
+			ch:=[cha : cha in E | cha(e) eq -1 and cha(-1) eq 1 and cha(F.1) eq 1 ];
+	      	U2,KRO,UB:=MIT22class(WA,WB,k1,k2,(k1-1)*(k2-1),2,ns,fie,1,KE,ch[1],0,0,pres);
+			return U2,UB /*TVI(U2,x^2+x+1,x^2-5,pres,2,KRO)*/;
+		end if;
+	end function;	
+	return Upmat;
+	end function;	
+
+
+
+
+SageComputeOverconvergentUp:=function(pres);/*This computes Up for SAGE in level 8*p11 and if ki are even it uses psi as in the thesis, and for ki odd it uses chi.*/
+	WA,WB,ns,fie,KE:=Inertcase(F,pq(F,11)*pq(F,2)^3,2,x^2+x+1,pres,11,[3,1],3);
+
+	Upmat:=function(k1,k2,N)
+		if k1 mod 2 eq 0 then
+			G:=HeckeCharacterGroup(pq(F,2)^3);
+			U2,_,KRO:=MIT2(WA,WB,k1,k2,N,2,ns,fie,1,KE,G.1,pres);
+			return TVI(U2,x^2+x+1,x^2-5,pres,2,KRO);
+	    else 
+	      	G:=DirichletGroup(pq(F,2)^3);
+			U,j:=UnitGroup(Z);
+			e:=j(U.2);
+			E:=Elements(G);
+			ch:=[cha : cha in E | cha(e) eq -1 and cha(-1) eq 1 and cha(F.1) eq 1 ];
+	      	U2,_,KRO:=MIT2(WA,WB,k1,k2,N,2,ns,fie,1,KE,ch[1],pres);
+			return TVI(U2,x^2+x+1,x^2-5,pres,2,KRO);
+		end if;
+	end function;	
+	return Upmat;
+	end function;
+
+SageComputeClassicalUp:=function(pres);/*This computes Up for SAGE in level 8*p11 and if ki are even it uses psi as in the thesis, and for ki odd it uses chi.*/
+	WA,WB,ns,fie,KE:=Inertcase(F,pq(F,11)*pq(F,2)^3,2,x^2+x+1,pres,11,[3,1],3);	
+	Upmat:=function(k1,k2)
+		if k1 mod 2 eq 0 then
+			G:=HeckeCharacterGroup(pq(F,2)^3);
+			U2,KRO,UB:=MIT22class(WA,WB,k1,k2,N,2,ns,fie,1,KE,G.1,0,0,pres);
+			return TVI(U2,x^2+x+1,x^2-5,pres,2,KRO);
+	    else 
+	      	G:=DirichletGroup(pq(F,2)^3);
+			U,j:=UnitGroup(Z);
+			e:=j(U.2);
+			E:=Elements(G);
+			ch:=[cha : cha in E | cha(e) eq -1 and cha(-1) eq 1 and cha(F.1) eq 1 ];
+	      	U2,KRO,UB:=MIT22class(WA,WB,k1,k2,(k1-1)*(k2-1),2,ns,fie,1,KE,ch[1],0,0,pres);
+			return TVI(U2,x^2+x+1,x^2-5,pres,2,KRO);
+		end if;
+	end function;	
+ return Upmat;
+ end function;	
